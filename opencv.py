@@ -2,22 +2,37 @@
 import numpy as np
 import cv2
 
-lower = np.array([0, 48, 80], dtype='uint8')
-upper = np.array([20, 255, 255], dtype='uint8')
+HSV_lower = np.array([0, 48, 80], dtype='uint8')
+HSV_upper = np.array([20, 255, 255], dtype='uint8')
 
-camera = cv2.VideoCapture('video.mp4')
-# size = (camera.col,camera.row)
+YCrCb_lower = np.array([0, 133, 77], dtype='uint8')
+YCrCb_upper = np.array([255, 173, 127], dtype='uint8')
 
-fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-out = cv2.VideoWriter('output.mp4', fourcc, 25.0, (int(camera.get(3)), int(camera.get(4))))
-
-# 전역 변수
-(grabbed, frame) = camera.read()
-roi = frame[:, :]
+# camera variables
+ix1, ix2 = 0, 0
+iy1, iy2 = 0, 0
 switch = True
+frame = None
+grabbed = None
+out = None
 
-ix1, ix2 = 0, camera.get(3)
-iy1, iy2 = 0, camera.get(4)
+
+def set_video():
+    global ix1, iy1, ix2, iy2, frame, grabbed, out, frame
+    # set video
+    camera = cv2.VideoCapture('video.mp4', )
+    # size = (camera.col,camera.row)
+
+    fourcc = cv2.VideoWriter_fourcc(*'DIVX')
+    out = cv2.VideoWriter('output.mp4', fourcc, 25.0, (int(camera.get(3)) - 500, int(camera.get(4))))
+
+    # 전역 변수
+    (grabbed, frame) = camera.read()
+
+    ix1, ix2 = 0, camera.get(3)
+    iy1, iy2 = 0, camera.get(4)
+
+    return camera
 
 
 # Mouse Callback함수
@@ -38,57 +53,68 @@ def set_roi(event, x, y, flags, param):
         print(ix1, ' ', ix2, ' ', iy1, ' ', iy2)
 
 
-cv2.imshow('images', frame)
-cv2.setMouseCallback('images', set_roi)
+if __name__ == '__main__':
+    # set camera
+    camera = set_video()
+    # set cv2
+    cv2.imshow('images', frame)
+    cv2.setMouseCallback('images', set_roi)
 
-# 영상 시작
-print('영상 시작\n')
-while True:
-    if switch:
-        (grabbed, frame) = camera.read()
+    # select method
+    METHOD = cv2.COLOR_BGR2YCR_CB
 
-        if grabbed:
-            converted = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-            skinMask = cv2.inRange(converted, lower, upper)
+    # start video
+    print('영상 시작\n')
+    while True:
+        if switch:
+            (grabbed, frame) = camera.read()
 
-            # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
-            # skinMask = cv2.erode(skinMask, kernel, iterations=1)
-            # skinMask = cv2.dilate(skinMask, kernel, iterations=1)
+            if grabbed:
+                converted = skinMask = None
+                if METHOD == cv2.COLOR_BGR2HSV:
+                    converted = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+                    skinMask = cv2.inRange(converted, HSV_lower, HSV_upper)
+                elif METHOD == cv2.COLOR_BGR2YCR_CB:
+                    converted = cv2.cvtColor(frame, cv2.COLOR_BGR2YCR_CB)
+                    skinMask = cv2.inRange(converted, YCrCb_lower, YCrCb_upper)
 
-            # skinMask = cv2.GaussianBlur(skinMask, (3, 3), 0)
-            skin = cv2.bitwise_and(frame, frame, mask=skinMask)
+                # skinMask = cv2.GaussianBlur(skinMask, (3, 3), 0)
+                skin = cv2.bitwise_and(frame, frame, mask=skinMask)
 
-            # 피부 색깔 변환
-            skin[:, :, 2] = 0
+                # 피부 색깔 변환
+                skin[:, :, 2] = 0
 
-            # 마스킹 및 영상 융합
-            skin_gray = skin.copy()
-            skin_gray = cv2.cvtColor(skin_gray, cv2.COLOR_BGR2GRAY)
-            ret, mask = cv2.threshold(skin_gray, 10, 255, cv2.THRESH_BINARY)
-            mask_inv = cv2.bitwise_not(mask)
+                # 마스킹 및 영상 융합
+                skin_gray = skin.copy()
+                skin_gray = cv2.cvtColor(skin_gray, cv2.COLOR_BGR2GRAY)
+                ret, mask = cv2.threshold(skin_gray, 10, 255, cv2.THRESH_BINARY)
+                mask_inv = cv2.bitwise_not(mask)
 
-            roi = frame[int(iy1):int(iy2), int(ix1):int(ix2), :]
-            frame_bg = cv2.bitwise_and(roi, roi, mask=mask_inv[int(iy1):int(iy2), int(ix1):int(ix2)])
-            roi = skin[int(iy1):int(iy2), int(ix1):int(ix2), :]
-            skin_fg = cv2.bitwise_and(roi, roi, mask=mask[int(iy1):int(iy2), int(ix1):int(ix2)])
+                roi = frame[int(iy1):int(iy2), int(ix1):int(ix2), :]
+                frame_bg = cv2.bitwise_and(roi, roi, mask=mask_inv[int(iy1):int(iy2), int(ix1):int(ix2)])
+                roi = skin[int(iy1):int(iy2), int(ix1):int(ix2), :]
+                skin_fg = cv2.bitwise_and(roi, roi, mask=mask[int(iy1):int(iy2), int(ix1):int(ix2)])
 
-            dst = cv2.add(frame_bg, skin_fg)
-            frame[int(iy1):int(iy2), int(ix1):int(ix2), :] = dst
+                dst = cv2.add(frame_bg, skin_fg)
+                frame[int(iy1):int(iy2), int(ix1):int(ix2), :] = dst
 
-            # 출력
-            cv2.imshow('images', frame)
+                # 출력
+                cv2.imshow('images', frame)
 
-            # 저장
-            out.write(frame)
+                # 저장
+                out.write(frame)
 
-    # 키 설정
-    key = cv2.waitKey(1)
-    if key == ord('q'):
-        break
-    elif key == ord(' '):
-        switch = not switch
+        # 키 설정
+        key = cv2.waitKey(1)
+        if key == ord('q'):
+            break
+        elif key == ord(' '):
+            switch = not switch
+
+    # release resources
+    camera.release()
+    out.release()
+    cv2.destroyWindow('images')
 
 
-camera.release()
-out.release()
-cv2.destroyWindow('images')
+
